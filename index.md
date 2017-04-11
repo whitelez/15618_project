@@ -2,6 +2,6 @@
 
 Enzhe Lu / Jack Dong
 
-Please see (https://github.com/whitelez/15618_project/blob/master/15418_Project_Proposal.pdf) as project proposal
+Please see [Project Proposal](https://github.com/whitelez/15618_project/blob/master/15418_Project_Proposal.pdf)
 
 
