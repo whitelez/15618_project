@@ -27,7 +27,7 @@ struct Node{
 int g_max_height = 0;
 
 // string Best_attribute(vector<map<string, int> > samples)
-//
+
 
 int Most_common_value(vector<map<string, int> >&samples, int* count){
     if(samples.size() == 0){
