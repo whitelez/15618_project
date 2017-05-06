@@ -21,12 +21,16 @@ struct Node{
     int status; // 10 as leaf. 11 as inner
     int value;
     int height;
+    double gamma_top; // top weight for leaf 
+    double gamma_bottom; // bottom weight for leaf only
+    double init; // f_init value
     string attr;
     struct Node* left;
     struct Node* right;
 };
 
 int g_max_height = 0;
+int max_iters = 3;
 
 double GetEntropyFromCount(double dcount, double dtotal) {
     double entropy = 0.0;
@@ -198,7 +202,61 @@ Node* BuildTree_Naive(vector<map<string, int>* > &samples, set<string> &attribut
 
 }
 
+vector<Node*> buildTree_multiple(vector<map<string, int>* > &samples, set<string> &attributes) {
+    // initial model
+    // @TODO check if need 0 or -1
+    // Currently derived for 0
+    vector<Node*> result;
+    int ret = Most_common_value(samples, &count);
+    double y_sum = (double)(count*ret+(samples.size()-count)*(-ret));
+    double y_ave = y_sum / (double)samples.size(); 
+    double f_init = 0.5 * log2((1+y_ave)/(1-y_ave));
 
+    string f_result = "F";
+    string original = "original";
+
+    for(int i = 0; i < samples.size(); i++){
+        map<string, int>* line = samples[i];
+        //@TODO double value!!!!!!!!!
+        line->insert(pair<string, int>(f_result, f_init));
+        int val = line->find("result")->second;
+        line->insert(pari<string, int>(original, val));
+        //@TODO check if update is valid
+        //@TODO double value!!!!!!!!!
+        std::map<char, int>::iterator it = line.find("result"); 
+        if (it != m.end()) {
+            //@TODO check if need 0 or -1
+            // currently not derived for 0
+            double exp_val = 2.0*(double)val*f_init;
+            it->second = 2.0*(double)val / (1.0+exp(exp_val));
+        }
+    }
+
+    for (int i = 1; i < max_iters; i++) {
+        Node * tree = BuildTree_Naive(samples, attributes, 0);
+        tree->init = f_init;
+        // calculate new residuls and gamma value
+
+        for(int i = 0; i < samples.size(); i++){
+            map<string, int>* line = samples[i];
+            //@TODO double value!!!!!!!!!
+            line->insert(pair<string, int>(f_result, f_init));
+            int val = line->find("result")->second;
+            line->insert(pari<string, int>(original, val));
+            //@TODO check if update is valid
+            //@TODO double value!!!!!!!!!
+            std::map<char, int>::iterator it = line.find("result"); 
+            if (it != m.end()) {
+                //@TODO check if need 0 or -1
+                // currently not derived for 0
+                double exp_val = 2.0*(double)val*f_init;
+                it->second = 2.0*(double)val / (1.0+exp(exp_val));
+            }
+        }
+        
+        result.push_back(tree);
+    }
+}
 
 int Predict_result (vector<map<string, int>* > &samples, Node* tree){
     if(tree == NULL){
@@ -237,9 +295,58 @@ int Predict_result (vector<map<string, int>* > &samples, Node* tree){
     }
 }
 
+int Predict_helper (vector<map<string, int>* > &samples, Node* tree, int f_init){
+    if(tree == NULL){
+        cout << "Error: the tree node is NULL"<< endl;
+        return -1;
+    }
+    if(tree->status == LEAF){
+        // string id = "id";
+        string predict = "predict";
+        //@TODO double value!!!!!
+        for(int i = 0; i < samples.size(); i++){
+            map<string, int>* line = samples[i];
+            std::map<char, int>::iterator it = line.find(predict); 
+            //@TODO check if map modification is correct
+            if (it != m.end()) {
+                double exp_val = 2.0*(double)val*f_init;
+                it->second += tree->gamma;
+            } else {
+                double val_init = (double)f_init + tree->gamma;
+                line->insert(pair<string, int>(predict, val_init;
+            }
+        }
+        return 1;
+    }else{
+        vector<map<string, int>* > left_samples;
+        vector<map<string, int>* > right_samples;
+        string split_attr = tree->attr;
+        for(int i = 0; i < samples.size(); i++){
+            map<string, int>* inner = samples[i];
+            if(inner->find(split_attr) == inner->end()){
+                left_samples.push_back(inner);
+            }else{
+                right_samples.push_back(inner);
+            }
+        }
+        int ret = 0;
+        ret += Predict_helper(left_samples, tree->left, f_init);
+        ret += Predict_helper(right_samples, tree->right, f_init);
+        if(ret != 2){
+            return -1;
+        }else{
+            return 1;
+        }
+    }
+}
 
+int Predict_multiple (vector<map<string, int>* > &samples, vector<Node*> trees) {
+    for(int i = 0; i < trees.size(); i++){
+        Predict_helper (samples, trees[i], trees[i]->f_init);
+    }
+}
 
-
+//@TODO parse max_iters
 int main(int argc, char** argv){
     if(argc < 4){
         fprintf(stdout, "Usage: train [training_file] [max_height] [testing_file]\n");
