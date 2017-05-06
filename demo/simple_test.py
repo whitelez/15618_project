@@ -2,8 +2,8 @@ import xgboost as xgb
 import time
 
 # read in data
-dtrain = xgb.DMatrix('data/agaricus.txt.train')
-dtest = xgb.DMatrix('data/agaricus.txt.test')
+dtrain = xgb.DMatrix('data/agaricus.txt.train2')
+dtest = xgb.DMatrix('data/agaricus.txt.test2')
 
 # specify parameters via map
 param = {'max_depth':2, 'eta':1, 'silent':1, 'objective':'binary:logistic' }
@@ -24,7 +24,7 @@ duration = end_time - start_time
 round_preds = [int(round(elem, 0)) for elem in preds ]
 observe = list();
 
-with open('data/agaricus.txt.test') as f:
+with open('data/agaricus.txt.test2') as f:
     lines = f.readlines()
 
 
