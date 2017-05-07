@@ -83,14 +83,6 @@ Node* BuildTree_Naive(double** samples, int sample_size, int max_attribute, int 
 
     Node *ret_node = new Node();
 
-    //left and right node index mask total size of sample_size, 1 as in, 0 as not in
-    int* left_array;
-    int* right_array;
-    cudaMalloc((void **)&left_array, sizeof(int) * sample_size);
-    cudaMalloc((void **)&right_array, sizeof(int) * sample_size);
-    cudaMemset(left_array, 0x00, sizeof(int)*sample_size);
-    cudaMemset(right_array, 0x00, sizeof(int)*sample_size);
-
 
     // calculate most common value
     Pre_MCV<<<blocks, threadsPerBlock>>>(sample_size, samples, pos_count, neg_count, gamma_top, gamma_bottom, index_array);
@@ -146,6 +138,15 @@ Node* BuildTree_Naive(double** samples, int sample_size, int max_attribute, int 
         return NULL;
     }
     ret_node->attr = split_attr;
+    
+    //left and right node index mask total size of sample_size, 1 as in, 0 as not in
+    int* left_array;
+    int* right_array;
+    cudaMalloc((void **)&left_array, sizeof(int) * sample_size);
+    cudaMalloc((void **)&right_array, sizeof(int) * sample_size);
+    cudaMemset(left_array, 0x00, sizeof(int)*sample_size);
+    cudaMemset(right_array, 0x00, sizeof(int)*sample_size);
+
 
     //use left and right array as the mask for next level node
     Split_kernel<<<blocks, threadsPerBlock>>>(sample_size, samples, split_attr, left_array, right_array, index_array);
