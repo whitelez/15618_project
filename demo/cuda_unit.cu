@@ -23,6 +23,37 @@ saxpy_kernel(int N, float alpha, float* x, float* y, float* result) {
        result[index] = alpha * x[index] + y[index];
 }
 
+__device double ABS(double value){
+    if(value < 0){
+        return -value;
+    }else{
+        return value;
+    }
+}
+
+
+//I changed the name!!!!!!!!!!!!!
+__global__ void
+Pre_MCV_kernel(int N, double** input, int* pos_count, int* neg_count, double* gamma_top, double* gamma_bottom, int* index_array){
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < N){
+        double* input_line = input[index];
+        if(index_array[index] == 1){
+            if(input_line[1] > 0){
+                pos_count[index] = 1;
+            }else{
+                neg_count[index] = 0;
+            }
+            double ABS_val = ABS(input_line[1]);
+            double bot_val = ABS_val*(2.0 - ABS_val);
+
+            gamma_top[index] = input_line[1];
+            gamma_bottom[index] = bot_val;
+        }
+
+    }
+}
+
 __global__ void
 Split_kernel(int N, double** input, int attribute, int* left, int* right, int* index_array) {
 
@@ -85,9 +116,10 @@ Node* BuildTree_Naive(double** samples, int sample_size, int max_attribute, int 
 
 
     // calculate most common value
-    Pre_MCV<<<blocks, threadsPerBlock>>>(sample_size, samples, pos_count, neg_count, gamma_top, gamma_bottom, index_array);
+    //WARNING:: I Changed the name
+    Pre_MCV_kernel<<<blocks, threadsPerBlock>>>(sample_size, samples, pos_count, neg_count, gamma_top, gamma_bottom, index_array);
 
-    Reduce_MCV<<<blokcs, threadsPerBlock>>>(sample_size, pos_count, neg_count, gamma_top, gamma_bottom);
+    Reduce_MCV_kernel<<<blokcs, threadsPerBlock>>>(sample_size, pos_count, neg_count, gamma_top, gamma_bottom);
 
     // host calculate the count and popular result
     int pos_count_sum = 0;
@@ -138,7 +170,7 @@ Node* BuildTree_Naive(double** samples, int sample_size, int max_attribute, int 
         return NULL;
     }
     ret_node->attr = split_attr;
-    
+
     //left and right node index mask total size of sample_size, 1 as in, 0 as not in
     int* left_array;
     int* right_array;
