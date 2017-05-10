@@ -6,8 +6,8 @@ dtrain = xgb.DMatrix('data/agaricus.txt.train2')
 dtest = xgb.DMatrix('data/agaricus.txt.test2')
 
 # specify parameters via map
-param = {'max_depth':2, 'eta':1, 'silent':1, 'objective':'binary:logistic' }
-num_round = 2
+param = {'max_depth':3, 'eta':1, 'silent':1, 'objective':'binary:logistic' }
+num_round = 3
 
 #calculate time
 start_time = time.time()

@@ -1,8 +1,15 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <vector>
+#include <iostream>
+#include <fstream>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <driver_functions.h>
 #include <math.h>
+
+using namespace std;
 
 #define SUCCESS 1
 #define FAILURE -1
@@ -22,8 +29,21 @@
 
 /* Helper function to round up to a power of 2.
  */
+ struct Node{
+     int status; // 10 as leaf. 11 as inner
+     int value;
+     int height;
+     double gamma; // gamma for leaf
+     double init; // f_init value
+     double attr;
+     struct Node* left;
+     struct Node* right;
+ };
+
+
 
 int g_max_height = 3;
+int max_iters = 3;
 
 
 static inline int nextPow2(int n)
@@ -37,6 +57,131 @@ static inline int nextPow2(int n)
     n++;
     return n;
 }
+
+
+
+//Helper function for ABS
+__device__ double ABS(double value){
+    if(value < 0){
+        return -value;
+    }else{
+        return value;
+    }
+}
+
+
+//I changed the name!!!!!!!!!!!!!
+__global__ void
+Pre_MCV_kernel(int N, double* input, int* pos_count, int* neg_count, double* gamma_top, double* gamma_bottom, int* index_array){
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < N){
+        double* input_line = &(input[index*30]);
+        if(index_array[index] == 1){
+            if(input_line[1] > 0){
+                pos_count[index] = 1;
+            }else{
+                neg_count[index] = 1;
+            }
+            double ABS_val = ABS(input_line[1]);
+            double bot_val = ABS_val*(2.0 - ABS_val);
+
+            gamma_top[index] = input_line[1];
+            gamma_bottom[index] = bot_val;
+        }
+
+    }
+}
+
+__global__ void
+Split_kernel(int N, double* input, double attribute, int* left, int* right, int* index_array) {
+
+    // compute overall index from position of thread in current block,
+    // and given the block we are in
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int found = 0;
+    if (index < N){
+        if(index_array[index] == 1){
+            double* input_line = &(input[index*30]);
+            for(int i = 5; i < LINE_SIZE; i++){
+                if(input_line[i] == attribute){
+                    right[index] = 1;
+                    found = 1;
+                    break;
+                }
+            }
+            if(found == 0){
+                left[index] = 1;
+            }
+        }
+    }
+}
+
+
+
+__global__ void
+Cal_resd_pref_kernel(int N, double* input, double gamma, int* index_array) {
+
+    // compute overall index from position of thread in current block,
+    // and given the block we are in
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < N){
+        if(index_array[index] == 1){
+            double* input_line = &(input[index*30]);
+            double prev_f = input_line[2];
+            double curr_f = prev_f + gamma;
+            input_line[2] = curr_f;
+
+            double orig_val = input_line[0];
+            double exp_val = 2.0*orig_val*curr_f;
+            double resd_val = 2.0*orig_val / (1.0 + exp(exp_val));
+            input_line[1] = resd_val;
+        }
+    }
+}
+
+__global__ void
+Cal_predict(int N, double* input, double gamma, double f_init, double level, int* index_array){
+
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if(index < N){
+        if(index_array[index] == 1){
+            double* input_line = &(input[index*30]);
+            if(level == 0){
+                double predict_val = f_init + gamma;
+                input_line[3] = predict_val;
+            }else{
+                input_line[3] += gamma;
+            }
+        }
+    }
+
+}
+
+
+__global__ void
+Export_result_kernel(int N, double* input, double* output){
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if(index < N){
+        double* input_line = &(input[index*30]);
+        output[index] = input_line[PRED_IDX];
+    }
+
+}
+
+__global__ void
+Set_value_kernel(int N, double* input, double f_init) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < N){
+        double* input_line = &(input[index*30]);
+        input_line[F_IDX] = f_init;
+
+        double orig_val = input_line[RESULT_IDX];
+        double exp_val = 2.0*orig_val*f_init;
+        double resd_val = 2.0*orig_val / (1.0 + exp(exp_val));
+        input_line[RESULT_IDX] = resd_val;
+    }
+}
+
 
 __global__ void
 Upsweep(int* result, int length, int twod, int twod1) {
@@ -274,14 +419,15 @@ double Best_attribute(double* data, int sample_size, int max_attr, int* index_ar
         double neg_count_result = (double)sample_size - (double)pos_count_result;
         double p_pos = (double)pos_count_result / (double)sample_size;
         double p_neg = (double)neg_count_result / (double)sample_size;
-        double pos_entropy = GetEntropyFromCount(pos_succ_count_result, (double)pos_count_result);
-        double neg_entropy = GetEntropyFromCount(neg_succ_count_result, (double)neg_count_result);
+        double pos_entropy = GetEntropyFromCount((double)pos_succ_count_result, (double)pos_count_result);
+        double neg_entropy = GetEntropyFromCount((double)neg_succ_count_result, (double)neg_count_result);
         double expectation = p_pos*pos_entropy + p_neg*neg_entropy;
         double cur_info = entropy - expectation;
         if (cur_info > maximum) {
             best_attr = cur_attr;
             maximum = cur_info;
         }
+        cout<<"Max " << maximum <<" info " << cur_info << " attr " << cur_attr <<endl;
 
         cudaMemset(pos_count, 0x00, sizeof(int)*rounded_length);
         cudaMemset(pos_succ_count, 0x00, sizeof(int)*rounded_length);
@@ -295,13 +441,13 @@ double Best_attribute(double* data, int sample_size, int max_attr, int* index_ar
 }
 
 
-__device__ double ABS(double value){
-    if(value < 0){
-        return -value;
-    }else{
-        return value;
-    }
-}
+// __device__ double ABS(double value){
+//     if(value < 0){
+//         return -value;
+//     }else{
+//         return value;
+//     }
+// }
 
 __global__ void
 MCV_upsweep(int* pos_count, int* neg_count, double* gamma_top, double* gamma_bottom,
@@ -369,241 +515,6 @@ void MCV_reduce(int* pos_count, int* neg_count, double* gamma_top,
     }
 }
 
-vector<Node*> buildTree_multiple(double* samples2, int size, int attributes, int* index_array2) {
-    // initial model
-    vector<Node*> result;
-    const int threadsPerBlock = 512;
-    const int blocks = size/threadsPerBlock + 1;
-
-    double* samples;
-    cudaMalloc((void **)&samples, sizeof(double) * size * 30);
-    cudaMemset(samples, 0x00, sizeof(double) * size * 30);
-    cudaMemcpy(samples, samples2, sizeof(double) * size * 30, cudaMemcpyHostToDevice);
-
-    int* index_array;
-    cudaMalloc((void **)&index_array, sizeof(int) * size);
-    cudaMemset(index_array, 0x00, sizeof(int) * size);
-    cudaMemcpy(index_array, index_array2, sizeof(int) * size, cudaMemcpyHostToDevice);
-
-    int rounded_length = nextPow2(size);
-    int* pos_count;
-    int* neg_count;
-    double* gamma_top;
-    double* gamma_bottom;
-
-    cudaMalloc((void**)&pos_count, sizeof(int)*rounded_length);
-    cudaMalloc((void**)&neg_count, sizeof(int)*rounded_length);
-    cudaMalloc((void**)&gamma_top, sizeof(double)*rounded_length);
-    cudaMalloc((void**)&gamma_bottom, sizeof(double)*rounded_length);
-
-    cudaMemset(pos_count, 0x00, sizeof(int)*rounded_length);
-    cudaMemset(neg_count, 0x00, sizeof(int)*rounded_length);
-    cudaMemset(gamma_top, 0x00, sizeof(double)*rounded_length);
-    cudaMemset(gamma_bottom, 0x00, sizeof(double)*rounded_length);
-
-    Pre_MCV_kernel<<<blocks, threadsPerBlock>>>(size, samples, pos_count, neg_count, gamma_top, gamma_bottom, index_array);
-    cudaThreadSynchronize();
-
-    int pos_count_last = 0;
-    int neg_count_last = 0;
-    double gamma_top_last = 0.0;
-    double gamma_bottom_last = 0.0;
-
-    cudaMemcpy(&pos_count_last, pos_count[rounded_length-1], sizeof(int),
-              cudaMemcpyDeviceToHost);
-    cudaMemcpy(&neg_count_last, neg_count[rounded_length-1], sizeof(int),
-              cudaMemcpyDeviceToHost);
-    cudaMemcpy(&gamma_top_last, gamma_top[rounded_length-1], sizeof(double),
-              cudaMemcpyDeviceToHost);
-    cudaMemcpy(&gamma_bottom_last, gamma_bottom[rounded_length-1], sizeof(double),
-              cudaMemcpyDeviceToHost);
-
-    MCV_reduce(pos_count, neg_count, gamma_top, gamma_bottom, rounded_length);
-    cudaThreadSynchronize();
-
-    int pos_count_result = 0;
-    int neg_count_result = 0;
-    double gamma_top_result = 0.0;
-    double gamma_bottom_result = 0.0;
-
-    cudaMemcpy(&pos_count_result, pos_count[rounded_length-1], sizeof(int),
-              cudaMemcpyDeviceToHost);
-    cudaMemcpy(&neg_count_result, neg_count[rounded_length-1], sizeof(int),
-              cudaMemcpyDeviceToHost);
-    cudaMemcpy(&gamma_top_result, gamma_top[rounded_length-1], sizeof(double),
-              cudaMemcpyDeviceToHost);
-    cudaMemcpy(&gamma_bottom_result, gamma_bottom[rounded_length-1], sizeof(double),
-              cudaMemcpyDeviceToHost);
-
-    pos_count_result += pos_count_last;
-    neg_count_result += neg_count_last;
-    gamma_top_result += gamma_top_last;
-    gamma_bottom_result += gamma_bottom_last;
-
-    int count = reg_count_result;
-    int ret = FAILURE;
-
-    if (pos_count_result > neg_count_result) {
-        count = pos_count_result;
-        ret = SUCCESS;
-    }
-    double y_sum = (double)count * (double)ret  +   ((double)size-(double)count)*(-(double)ret) ;
-    double y_ave = y_sum / (double)size;
-    double f_init = 0.5 * log2((1+y_ave)/(1-y_ave));
-
-    string f_result = "preF";
-    string original = "original";
-
-    for(int i = 0; i < size; i++){
-        double* line = &samples[i*LINE_SIZE];
-        line[F_IDX] = f_init;
-        // Original value was written in parsing
-        //double val = line->find("result")->second;
-        //line->insert(pair<string, double>(original, val));
-        double pre_val = line[RESULT_IDX];
-        double exp_val = 2.0*pre_val*f_init;
-        line[RESULT_IDX] = 2.0*pre_val / (1.0+exp(exp_val));
-
-        /*
-        map<string, double>::iterator it = line->find("result");
-        if (it != line->end()) {
-            //@TODO check if need 0 or -1
-            // currently not derived for 0
-            double exp_val = 2.0*val*f_init;
-            it->second = 2.0*val / (1.0+exp(exp_val));
-        }
-        */
-    }
-
-    for (int i = 1; i < max_iters; i++) {
-        Node* tree = BuildTree_Naive(samples, size, attributes, 0, idex_array,
-                                      pos_count, neg_count, gamma_top, gamma_bottom);
-        tree->init = f_init;
-        // calculate new residuls and gamma value
-        //
-        // for(int i = 0; i < samples.size(); i++){
-        //     map<string, double>* line = samples[i];
-        //     //@TODO double value!!!!!!!!!
-        //     line->insert(pair<string, double>(f_result, f_init));
-        //     int val = line->find("result")->second;
-        //     line->insert(pari<string, int>(original, val));
-        //     //@TODO check if update is valid
-        //     //@TODO double value!!!!!!!!!
-        //     std::map<char, int>::iterator it = line.find("result");
-        //     if (it != m.end()) {
-        //         //@TODO check if need 0 or -1
-        //         // currently not derived for 0
-        //         double exp_val = 2.0*(double)val*f_init;
-        //         it->second = 2.0*(double)val / (1.0+exp(exp_val));
-        //     }
-        // }
-
-        result.push_back(tree);
-    }
-    return result;
-}
-
-
-//Helper function for ABS
-__device__ double ABS(double value){
-    if(value < 0){
-        return -value;
-    }else{
-        return value;
-    }
-}
-
-
-//I changed the name!!!!!!!!!!!!!
-__global__ void
-Pre_MCV_kernel(int N, double* input, int* pos_count, int* neg_count, double* gamma_top, double* gamma_bottom, int* index_array){
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index < N){
-        double* input_line = &(input[index*30]);
-        if(index_array[index] == 1){
-            if(input_line[1] > 0){
-                pos_count[index] = 1;
-            }else{
-                neg_count[index] = 1;
-            }
-            double ABS_val = ABS(input_line[1]);
-            double bot_val = ABS_val*(2.0 - ABS_val);
-
-            gamma_top[index] = input_line[1];
-            gamma_bottom[index] = bot_val;
-        }
-
-    }
-}
-
-__global__ void
-Split_kernel(int N, double* input, double attribute, int* left, int* right, int* index_array) {
-
-    // compute overall index from position of thread in current block,
-    // and given the block we are in
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    int found = 0;
-    if (index < N){
-        if(index_array[index] == 1){
-            double* input_line = &(input[index*30]);
-            for(int i = 5; i < LINE_SIZE; i++){
-                if(input_line[i] == attribute){
-                    left[index] = 1;
-                    found = 1;
-                    break;
-                }
-            }
-            if(found == 0){
-                right[index] = 1;
-            }
-        }
-    }
-}
-
-
-
-__global__ void
-Cal_resd_pref_kernel(int N, double* input, double gamma, int* index_array) {
-
-    // compute overall index from position of thread in current block,
-    // and given the block we are in
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    double attr = (double)attribute;
-    int found = 0;
-    if (index < N){
-        if(index_array[index] == 1){
-            double* input_line = &(input[index*30]);
-            double prev_f = input_line[2];
-            double curr_f = prev_f + gamma;
-            input_line[2] = curr_f;
-
-            double orig_val = input_line[0];
-            double exp_val = 2.0*orig_val*curr_f;
-            double resd_val = 2.0*orig_val / (1.0 + exp(exp_val));
-            input_line[1] = resd_val;
-        }
-    }
-}
-
-__global__ void
-Cal_predict(int N, double* samples, double gamma, double f_init, double level, int* index_array){
-
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if(index < N){
-        if(index_array[index] == 1){
-            double* input_line = &(input[index*30]);
-            if(level == 0){
-                double predict_val = f_init + gamma;
-                input_line[3] = predict_val;
-            }else{
-                input_line[3] += gamma;
-            }
-        }
-    }
-
-}
-
-
 
 Node* BuildTree_Naive(double* samples, int sample_size, int max_attribute, int height, int* index_array,
                     int* pos_count, int* neg_count, double* gamma_top, double* gamma_bottom){
@@ -646,7 +557,7 @@ Node* BuildTree_Naive(double* samples, int sample_size, int max_attribute, int h
         count = neg_count_sum;
     }
 
-
+    cout<<"ret " <<ret << " count " <<count<< " gamma " << gamma_top_sum / gamma_bottom_sum <<endl;
     //leaf condition
     if(count == sample_size || height == g_max_height){
         ret_node->attr = -1; //NULL for a string
@@ -658,6 +569,8 @@ Node* BuildTree_Naive(double* samples, int sample_size, int max_attribute, int h
         double gamma = gamma_top_sum / gamma_bottom_sum;
         ret_node->gamma = gamma;
         Cal_resd_pref_kernel<<<blocks, threadsPerBlock>>>(sample_size, samples, gamma, index_array);
+        cudaThreadSynchronize();
+        cout<< "gamma " << gamma << " ret " << ret << endl;
         return ret_node;
     }
 
@@ -684,6 +597,37 @@ Node* BuildTree_Naive(double* samples, int sample_size, int max_attribute, int h
     Split_kernel<<<blocks, threadsPerBlock>>>(sample_size, samples, split_attr, left_array, right_array, index_array);
     cudaThreadSynchronize();
 
+
+/////////////////////////////////
+    cout<<"Best Attr " << split_attr << endl;
+    int* left_array_2;
+    int* right_array_2;
+    cudaMalloc((void **)&left_array_2, sizeof(int) * rounded_length);
+    cudaMalloc((void **)&right_array_2, sizeof(int) * rounded_length);
+    cudaMemset(left_array_2, 0x00, sizeof(int)*rounded_length);
+    cudaMemset(right_array_2, 0x00, sizeof(int)*rounded_length);
+    cudaMemcpy(left_array_2, left_array, sizeof(int)*sample_size, cudaMemcpyDeviceToDevice);
+    cudaMemcpy(right_array_2, right_array, sizeof(int)*sample_size, cudaMemcpyDeviceToDevice);
+
+    int left_array_2_last = 0;
+    int right_array_2_last = 0;
+    cudaMemcpy(&left_array_2_last, &left_array_2[rounded_length-1], sizeof(int),cudaMemcpyDeviceToHost);
+    cudaMemcpy(&right_array_2_last, &right_array_2[rounded_length-1], sizeof(int),cudaMemcpyDeviceToHost);
+
+    Exclusive_scan(rounded_length, left_array_2);
+    Exclusive_scan(rounded_length, right_array_2);
+
+    int left_array_2_result = 0;
+    int right_array_2_result = 0;
+    cudaMemcpy(&left_array_2_result, &left_array_2[rounded_length-1], sizeof(int),cudaMemcpyDeviceToHost);
+    cudaMemcpy(&right_array_2_result, &right_array_2[rounded_length-1], sizeof(int),cudaMemcpyDeviceToHost);
+    left_array_2_result += left_array_2_last;
+    right_array_2_result += right_array_2_last;
+
+    cout <<" left size " << left_array_2_result<< " right size " << right_array_2_result <<endl;
+///////////////////////////
+
+
     ret_node->left = BuildTree_Naive(samples, sample_size, max_attribute, height+1, left_array,
                                     pos_count, neg_count, gamma_top, gamma_bottom);
     ret_node->right = BuildTree_Naive(samples, sample_size, max_attribute, height+1, right_array,
@@ -695,6 +639,137 @@ Node* BuildTree_Naive(double* samples, int sample_size, int max_attribute, int h
     return ret_node;
 
 }
+
+
+vector<Node*> BuildTree_multiple(double* samples2, int size, int attributes, int* index_array2) {
+    cout<<"BM IN" <<endl;
+    // initial model
+    vector<Node*> result;
+    const int threadsPerBlock = 512;
+    const int blocks = size/threadsPerBlock + 1;
+
+    double* samples;
+    cudaMalloc((void **)&samples, sizeof(double) * size * 30);
+    cudaMemset(samples, 0x00, sizeof(double) * size * 30);
+    cudaMemcpy(samples, samples2, sizeof(double) * size * 30, cudaMemcpyHostToDevice);
+
+    int* index_array;
+    cudaMalloc((void **)&index_array, sizeof(int) * size);
+    cudaMemset(index_array, 0x00, sizeof(int) * size);
+    cudaMemcpy(index_array, index_array2, sizeof(int) * size, cudaMemcpyHostToDevice);
+
+    int rounded_length = nextPow2(size);
+    int* pos_count;
+    int* neg_count;
+    double* gamma_top;
+    double* gamma_bottom;
+
+    cudaMalloc((void**)&pos_count, sizeof(int)*rounded_length);
+    cudaMalloc((void**)&neg_count, sizeof(int)*rounded_length);
+    cudaMalloc((void**)&gamma_top, sizeof(double)*rounded_length);
+    cudaMalloc((void**)&gamma_bottom, sizeof(double)*rounded_length);
+
+    cudaMemset(pos_count, 0x00, sizeof(int)*rounded_length);
+    cudaMemset(neg_count, 0x00, sizeof(int)*rounded_length);
+    cudaMemset(gamma_top, 0x00, sizeof(double)*rounded_length);
+    cudaMemset(gamma_bottom, 0x00, sizeof(double)*rounded_length);
+
+    Pre_MCV_kernel<<<blocks, threadsPerBlock>>>(size, samples, pos_count, neg_count, gamma_top, gamma_bottom, index_array);
+    cudaThreadSynchronize();
+
+    int pos_count_last = 0;
+    int neg_count_last = 0;
+    double gamma_top_last = 0.0;
+    double gamma_bottom_last = 0.0;
+
+    cudaMemcpy(&pos_count_last, &pos_count[rounded_length-1], sizeof(int),
+              cudaMemcpyDeviceToHost);
+    cudaMemcpy(&neg_count_last, &neg_count[rounded_length-1], sizeof(int),
+              cudaMemcpyDeviceToHost);
+    cudaMemcpy(&gamma_top_last, &gamma_top[rounded_length-1], sizeof(double),
+              cudaMemcpyDeviceToHost);
+    cudaMemcpy(&gamma_bottom_last, &gamma_bottom[rounded_length-1], sizeof(double),
+              cudaMemcpyDeviceToHost);
+    cout<< "Testing" <<endl;
+
+    MCV_reduce(pos_count, neg_count, gamma_top, gamma_bottom, rounded_length);
+    cudaThreadSynchronize();
+
+
+    cout<< "Testing" <<endl;
+
+    int pos_count_result = 0;
+    int neg_count_result = 0;
+    double gamma_top_result = 0.0;
+    double gamma_bottom_result = 0.0;
+
+    cudaMemcpy(&pos_count_result, &pos_count[rounded_length-1], sizeof(int),
+              cudaMemcpyDeviceToHost);
+    cudaMemcpy(&neg_count_result, &neg_count[rounded_length-1], sizeof(int),
+              cudaMemcpyDeviceToHost);
+    cudaMemcpy(&gamma_top_result, &gamma_top[rounded_length-1], sizeof(double),
+              cudaMemcpyDeviceToHost);
+    cudaMemcpy(&gamma_bottom_result, &gamma_bottom[rounded_length-1], sizeof(double),
+              cudaMemcpyDeviceToHost);
+    cout<< "Testing" <<endl;
+
+    pos_count_result += pos_count_last;
+    neg_count_result += neg_count_last;
+    gamma_top_result += gamma_top_last;
+    gamma_bottom_result += gamma_bottom_last;
+
+    int count = neg_count_result;
+    int ret = FAILURE;
+
+    if (pos_count_result > neg_count_result) {
+        count = pos_count_result;
+        ret = SUCCESS;
+    }
+    double y_sum = (double)count * (double)ret  +   ((double)size-(double)count)*(-(double)ret) ;
+    double y_ave = y_sum / (double)size;
+    double f_init = 0.5 * log2((1+y_ave)/(1-y_ave));
+    cout<< "Testing4" <<endl;
+
+    string f_result = "preF";
+    string original = "original";
+
+    Set_value_kernel<<<blocks, threadsPerBlock>>>(size, samples, f_init);
+
+
+    cout<< "Before Build Tree" <<endl;
+
+    // for (int i = 1; i < max_iters; i++) {
+        Node* tree = BuildTree_Naive(samples, size, attributes, 0, index_array,
+                                      pos_count, neg_count, gamma_top, gamma_bottom);
+        tree->init = f_init;
+        // calculate new residuls and gamma value
+        //
+        // for(int i = 0; i < samples.size(); i++){
+        //     map<string, double>* line = samples[i];
+        //     //@TODO double value!!!!!!!!!
+        //     line->insert(pair<string, double>(f_result, f_init));
+        //     int val = line->find("result")->second;
+        //     line->insert(pari<string, int>(original, val));
+        //     //@TODO check if update is valid
+        //     //@TODO double value!!!!!!!!!
+        //     std::map<char, int>::iterator it = line.find("result");
+        //     if (it != m.end()) {
+        //         //@TODO check if need 0 or -1
+        //         // currently not derived for 0
+        //         double exp_val = 2.0*(double)val*f_init;
+        //         it->second = 2.0*(double)val / (1.0+exp(exp_val));
+        //     }
+        // }
+
+        result.push_back(tree);
+    // }
+
+    cout<<"BM out" <<endl;
+
+    return result;
+}
+
+
 
 
 int Predict_Naive(double* samples, int sample_size, Node* tree, double f_init, int level, int* index_array){
@@ -718,6 +793,7 @@ int Predict_Naive(double* samples, int sample_size, Node* tree, double f_init, i
 
         Cal_predict<<<blocks, threadsPerBlock>>>(sample_size, samples, gamma, f_init, level, index_array);
         cudaThreadSynchronize();
+        return 1;
 
     }else{
 
@@ -753,9 +829,9 @@ double* Predict_multiple(double* samples, int sample_size, vector<Node*> forest,
 
 
     int* index_array;
-    cudaMalloc((void **)&index_array, sizeof(int)*sample_length);
-    cudaMemset(index_array, 0x00, sizeof(int)*sample_length);
-    cudaMemcpy(index_array, index_array2,  sizeof(int)*sample_length, cudaMemcpyHostToDevice);
+    cudaMalloc((void **)&index_array, sizeof(int)*sample_size);
+    cudaMemset(index_array, 0x00, sizeof(int)*sample_size);
+    cudaMemcpy(index_array, index_array2,  sizeof(int)*sample_size, cudaMemcpyHostToDevice);
 
     int* pos_count;
     int* neg_count;
@@ -776,7 +852,7 @@ double* Predict_multiple(double* samples, int sample_size, vector<Node*> forest,
     //WARNING:: I Changed the name
     Pre_MCV_kernel<<<blocks, threadsPerBlock>>>(sample_size, samples, pos_count, neg_count, gamma_top, gamma_bottom, index_array);
     cudaThreadSynchronize();
-    MCV_reduce(rounded_length, pos_count, neg_count, gamma_top, gamma_bottom);
+    MCV_reduce(pos_count, neg_count, gamma_top, gamma_bottom, rounded_length);
     cudaThreadSynchronize();
 
     int pos_count_sum = 0;
@@ -805,14 +881,14 @@ double* Predict_multiple(double* samples, int sample_size, vector<Node*> forest,
     double f_init = 0.5 * log2((1+y_ave)/(1-y_ave));
 
     cout<< "PM loop" << endl;
-    for(int i = 0; i < trees.size(); i++){
-        Predict_Naive(samples, sample_size, tree->left, f_init, i, index_array);
+    for(int i = 0; i < forest.size(); i++){
+        Predict_Naive(samples, sample_size, forest[i], f_init, i, index_array);
     }
 
 
-    double* device_output
+    double* device_output;
     cudaMalloc((void **)&device_output, sizeof(double) * sample_size);
-    Export_Result<<<blocks, threadsPerBlock>>>(sample_size, samples, device_output);
+    Export_result_kernel<<<blocks, threadsPerBlock>>>(sample_size, samples, device_output);
 
 
     double* output = (double*) malloc(sizeof(double)*sample_size);
@@ -827,4 +903,114 @@ double* Predict_multiple(double* samples, int sample_size, vector<Node*> forest,
 
     cout<< "PM end" << endl;
     return output;
+}
+
+
+//@TODO parse max_iters
+int main(int argc, char** argv){
+    if(argc < 4){
+        fprintf(stdout, "Usage: train [training_file] [max_height] [testing_file]\n");
+        return -1;
+    }
+
+    // fprintf(stdout, "argc %d\n", argc);
+    // return 0;
+    //parse file
+    ifstream input(argv[1]);
+    ifstream predict(argv[3]);
+
+    g_max_height = atoi(argv[2]);
+
+    string delimiter_1 = " ";
+    string delimiter_2 = ":";
+    string result = "result";
+    string pred = "predict";
+    size_t pos, temp;
+
+    vector<double* > samples;
+    int maxAttribute = 0;
+
+    int id = 0;
+
+    for (string line; getline(input, line); )
+    {
+        double* sample_line = (double*)malloc(sizeof(double)*30);
+        memset(sample_line, 0, sizeof(double)*30);
+        int curr = 5;
+        while((pos = line.find(delimiter_1)) != string::npos){
+            string token = line.substr(0, pos);
+            // cout<<token<<" ";
+            if((temp = token.find(delimiter_2)) != string::npos){
+                string key = token.substr(0, temp);
+                int key_value = atoi(key.c_str());
+                double value = (double)key_value;
+                sample_line[curr] = value;
+                curr++;
+                if(curr == 30){
+                    cout<< "Error: the attribute is more than 25"<<endl;
+                    return -1;
+                }
+                if(key_value > maxAttribute){
+                    maxAttribute = key_value;
+                }
+            }else{ //result
+                int result_int_val = atoi(token.c_str());
+                double result_val = (double)result_int_val;
+                sample_line[0] = result_val; //original
+                sample_line[1] = result_val; //result
+            }
+            line.erase(0, pos + delimiter_1.length());
+        }
+
+        if((temp = line.find(delimiter_2)) != string::npos){
+            string key = line.substr(0, temp);
+            // line.erase(0, temp+delimiter_2.length());
+            int key_value = atoi(line.c_str());
+            double value = (double)key_value;
+            sample_line[curr] = value;
+            curr++;
+            if(curr == 30){
+                cout<< "Error: the attribute is more than 25"<<endl;
+                return -1;
+            }
+            if(key_value > maxAttribute){
+                maxAttribute = key_value;
+            }
+        }else{
+            int result_int_val = atoi(line.c_str());
+            double result_val = (double)result_int_val;
+            sample_line[0] = result_val;
+            sample_line[1] = result_val;
+        }
+        //push the line map into the vector
+        sample_line[4] = id;
+        id++;
+        samples.push_back(sample_line);
+    }
+    input.close();
+
+    double** sample_matrix = &samples[0];
+    int sample_length = samples.size();
+
+    double* sample_array = (double*)malloc(sizeof(double)*sample_length*30);
+    for(int i = 0; i < sample_length; i++){
+        double* line = sample_matrix[i];
+        memcpy(sample_array+(i*30), line, sizeof(double)*30);
+        free(line);
+    }
+
+
+    int* index_array = (int*) malloc(sizeof(int)*sample_length);
+
+    //testing the reading of the file
+    for(int i = 0; i < sample_length; i++){
+        index_array[i] = 1;
+    }
+    cout <<endl;
+
+
+    BuildTree_multiple(sample_array, sample_length, maxAttribute, index_array);
+
+    return 0;
+
 }

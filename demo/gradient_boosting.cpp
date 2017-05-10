@@ -61,7 +61,7 @@ double GetEntropyFromData(vector<map<string, double>* > samples) {
 map<string, double> getMutualInfo(vector<map<string, double>* > data,
                                   set<string> attributes) {
     double entropy = GetEntropyFromData(data);
-
+    cout<< entropy <<endl;
     map<string, double> result;
     double totalCount = (double) data.size();
 
@@ -113,6 +113,7 @@ string Best_attribute(vector<map<string, double>* > samples, set<string> attribu
             maxAttr = it->first;
             maximum = curInfo;
         }
+        cout<<"Max " << maximum <<" info " << curInfo << " attr " << it->first <<endl;
     }
     return maxAttr;
 }
@@ -201,6 +202,7 @@ Node* BuildTree_Naive(vector<map<string, double>* > &samples, set<string> &attri
         fprintf(stderr, "Error: cannot build tree node due to zero samples\n");
     }
 
+    cout<< "Return " << ret << " count "<< count << " gamma " <<gamma <<endl;
 
     //leaf condition
     if(count == samples.size() || attributes.size() == 0 || height == g_max_height){
@@ -212,6 +214,7 @@ Node* BuildTree_Naive(vector<map<string, double>* > &samples, set<string> &attri
         ret_node->right = NULL;
         ret_node->gamma = gamma;
         Cal_gamma_residual_preF(samples, gamma);
+        cout<< "gamma " << gamma << " ret " << ret << endl;
         return ret_node;
     }
 
@@ -241,6 +244,7 @@ Node* BuildTree_Naive(vector<map<string, double>* > &samples, set<string> &attri
         }
     }
 
+    cout<< "Best Attr "<< split_attr << endl;
     cout <<" left size " << left_samples.size()<< " right size " << right_samples.size() <<endl;
     attributes.erase(split_attr);
 
@@ -285,7 +289,7 @@ vector<Node*> buildTree_multiple(vector<map<string, double>* > &samples, set<str
         }
     }
 
-    for (int i = 1; i < max_iters; i++) {
+    // for (int i = 1; i < max_iters; i++) {
         Node * tree = BuildTree_Naive(samples, attributes, 0);
         tree->init = f_init;
         // calculate new residuls and gamma value
@@ -308,7 +312,7 @@ vector<Node*> buildTree_multiple(vector<map<string, double>* > &samples, set<str
         // }
 
         result.push_back(tree);
-    }
+    // }
     return result;
 }
 
@@ -495,6 +499,9 @@ int main(int argc, char** argv){
     }
     input.close();
 
+
+    string parse = Best_attribute(samples, attributes);
+    cout<<parse<<endl;
 
     // call BuildTree_Naive()
 
