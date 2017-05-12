@@ -61,7 +61,7 @@ double GetEntropyFromData(vector<map<string, double>* > samples) {
 map<string, double> getMutualInfo(vector<map<string, double>* > data,
                                   set<string> attributes) {
     double entropy = GetEntropyFromData(data);
-    cout<< entropy <<endl;
+    // cout<< entropy <<endl;
     map<string, double> result;
     double totalCount = (double) data.size();
 
@@ -113,7 +113,7 @@ string Best_attribute(vector<map<string, double>* > samples, set<string> attribu
             maxAttr = it->first;
             maximum = curInfo;
         }
-        cout<<"Max " << maximum <<" info " << curInfo << " attr " << it->first <<endl;
+        // cout<<"Max " << maximum <<" info " << curInfo << " attr " << it->first <<endl;
     }
     return maxAttr;
 }
@@ -149,6 +149,7 @@ int Most_common_value(vector<map<string, double>* >&samples, int* count, double*
         temp = ABS(inner_val);
         gamma_bottom += temp*(2.0 - temp);
     }
+    // cout<< gamma_top << gamma_bottom<< endl;
     *gamma = gamma_top / gamma_bottom;
     // cout << "gamma top "<<gamma_top<< " " <<gamma_bottom << " " << *gamma << endl;
     if(succ_count >= fail_count){
@@ -202,7 +203,7 @@ Node* BuildTree_Naive(vector<map<string, double>* > &samples, set<string> &attri
         fprintf(stderr, "Error: cannot build tree node due to zero samples\n");
     }
 
-    cout<< "Return " << ret << " count "<< count << " gamma " <<gamma <<endl;
+    // cout<< "Return " << ret << " count "<< count << " gamma " <<gamma <<endl;
 
     //leaf condition
     if(count == samples.size() || attributes.size() == 0 || height == g_max_height){
@@ -214,7 +215,7 @@ Node* BuildTree_Naive(vector<map<string, double>* > &samples, set<string> &attri
         ret_node->right = NULL;
         ret_node->gamma = gamma;
         Cal_gamma_residual_preF(samples, gamma);
-        cout<< "gamma " << gamma << " ret " << ret << endl;
+        cout<< "Leaf: "<< samples.size()<< " gamma " << gamma << " ret " << ret << endl;
         return ret_node;
     }
 
@@ -289,7 +290,7 @@ vector<Node*> buildTree_multiple(vector<map<string, double>* > &samples, set<str
         }
     }
 
-    // for (int i = 1; i < max_iters; i++) {
+    for (int i = 1; i < max_iters; i++) {
         Node * tree = BuildTree_Naive(samples, attributes, 0);
         tree->init = f_init;
         // calculate new residuls and gamma value
@@ -312,13 +313,13 @@ vector<Node*> buildTree_multiple(vector<map<string, double>* > &samples, set<str
         // }
 
         result.push_back(tree);
-    // }
+    }
     return result;
 }
 
 int Predict_result (vector<map<string, int>* > &samples, Node* tree){
     if(tree == NULL){
-        cout << "Error: the tree node is NULL"<< endl;
+        // cout << "Error: the tree node is NULL"<< endl;
         return -1;
     }
     if(tree->status == LEAF){
@@ -355,7 +356,7 @@ int Predict_result (vector<map<string, int>* > &samples, Node* tree){
 
 int Predict_helper (vector<map<string, double>* > &samples, Node* tree, double f_init) {
     if(tree == NULL){
-        cout << "Error: the tree node is NULL"<< endl;
+        // cout << "Error: the tree node is NULL"<< endl;
         return -1;
     }
     if(tree->status == LEAF){
@@ -398,7 +399,7 @@ int Predict_helper (vector<map<string, double>* > &samples, Node* tree, double f
 }
 
 int Predict_multiple(vector<map<string, double>* > &samples, vector<Node*> trees) {
-    cout<< "PM in" << endl;
+    // cout<< "PM in" << endl;
     double sth =  0.0;
     int count = 0;
     int ret = Most_common_value(samples, &count, &sth);
@@ -406,11 +407,11 @@ int Predict_multiple(vector<map<string, double>* > &samples, vector<Node*> trees
     double y_ave = y_sum / (double)samples.size();
     double f_init = 0.5 * log2((1+y_ave)/(1-y_ave));
 
-    cout<< "PM loop" << endl;
+    // cout<< "PM loop" << endl;
     for(int i = 0; i < trees.size(); i++){
         Predict_helper(samples, trees[i], f_init);
     }
-    cout<< "PM end" << endl;
+    // cout<< "PM end" << endl;
     return 0;
 }
 
@@ -501,13 +502,13 @@ int main(int argc, char** argv){
 
 
     string parse = Best_attribute(samples, attributes);
-    cout<<parse<<endl;
+    // cout<<parse<<endl;
 
     // call BuildTree_Naive()
 
     vector<Node*> forest = buildTree_multiple(samples, attributes);
 
-    cout<< "finish forest" << endl;
+    // cout<< "finish forest" << endl;
 
     vector<map<string, double>* > pred_samples;
     set<string> pred_attributes;
@@ -555,7 +556,7 @@ int main(int argc, char** argv){
     }
     predict.close();
 
-    cout<< "started predict multiple" << endl;
+    // cout<< "started predict multiple" << endl;
 
     int ret = Predict_multiple(pred_samples, forest);
 
@@ -565,10 +566,10 @@ int main(int argc, char** argv){
     for(int i = 0; i < pred_samples.size(); i++){
         map<string, double>* inner = pred_samples[i];
         if(inner->find(pred) == inner->end()){
-            cout<<"Error: cannot find predict result" <<endl;
+            // cout<<"Error: cannot find predict result" <<endl;
         }else{
             if(inner->find(result) == inner->end()){
-                cout<<"Error: cannot find observed result" <<endl;
+                // cout<<"Error: cannot find observed result" <<endl;
             }else{
                 double pred_val = inner->find(pred)->second;
                 double obsv_val = inner->find(result)->second;
@@ -581,8 +582,8 @@ int main(int argc, char** argv){
 
     }
     float rate = (float)match / (float)total;
-    cout<< " total " << total << " match " <<match << endl;
-    //
+    cout<< " total " << total << " match " << match << " rate " << rate << endl;
+
     freeSamples(samples);
     freeSamples(pred_samples);
     freeForest(forest);
@@ -655,10 +656,10 @@ int test2(int argc, char** argv){
     // -----------------testing -----------------
     // string test = "wind";
     // if(attributes.find(test) != attributes.end()){
-    //     cout<<"testing the file"<<endl;
+        // cout<<"testing the file"<<endl;
     //     attributes.erase(test);
     //     if(attributes.find(test) != attributes.end()){
-    //         cout<< "WTF???"<<endl;
+            // cout<< "WTF???"<<endl;
     //     }
     // }
     // cout<< samples.size()<< endl;
@@ -666,12 +667,12 @@ int test2(int argc, char** argv){
     //
     // map<string, int>* test_line_1 = samples[1];
     // for (map<string,int>::iterator it=test_line_1->begin(); it!=test_line_1->end(); ++it){
-    //     cout << it->first << " => " << it->second << " ";
+        // cout << it->first << " => " << it->second << " ";
     // }
     // cout << endl;
     //
     // for (set<string>::iterator it=attributes.begin(); it!=attributes.end(); ++it){
-    //     cout << *it << " ";
+        // cout << *it << " ";
     // }
     // cout << endl;
 
@@ -681,7 +682,7 @@ int test2(int argc, char** argv){
 
     Node * tree = BuildTree_Naive(samples, attributes, 0);
 
-    cout<< "parsing result : "<< parse << endl;
+    // cout<< "parsing result : "<< parse << endl;
 
     vector<map<string, int>* > pred_samples;
     set<string> pred_attributes;
@@ -714,7 +715,7 @@ int test2(int argc, char** argv){
             sample_line->insert(pair<string, int>(key, value));
             pred_attributes.insert(key);
         }else{
-            cout<<"Error: the last one does not have : delimiter_2  ["<< line <<"]" << endl;
+            // cout<<"Error: the last one does not have : delimiter_2  ["<< line <<"]" << endl;
         }
         sample_line->insert(pair<string, int>(id, id_val));
         id_val++;
@@ -731,10 +732,10 @@ int test2(int argc, char** argv){
     for(int i = 0; i < pred_samples.size(); i++){
         map<string, int>* inner = pred_samples[i];
         if(inner->find(pred) == inner->end()){
-            cout<<"Error: cannot find predict result" <<endl;
+            // cout<<"Error: cannot find predict result" <<endl;
         }else{
             if(inner->find(result) == inner->end()){
-                cout<<"Error: cannot find observed result" <<endl;
+                // cout<<"Error: cannot find observed result" <<endl;
             }else{
                 int pred_val = inner->find(pred)->second;
                 int obsv_val = inner->find(result)->second;
@@ -747,7 +748,7 @@ int test2(int argc, char** argv){
 
     }
     float rate = (float)match / (float)total;
-    cout<< " total " << total << " match " <<match << endl;
+    // cout<< " total " << total << " match " <<match << endl;
     //
     //################need to free all samples
 
@@ -874,11 +875,11 @@ int test (void){
         map<string, int>::iterator nested;
         for( nested = inner.begin(); nested != inner.end(); ++nested)
         {
-            cout << nested->first << " " << nested->second << endl; //ERROR
+            // cout << nested->first << " " << nested->second << endl; //ERROR
         }
     }
 
-    cout << p->attr;
+    // cout << p->attr;
     delete(p);
 
 }
