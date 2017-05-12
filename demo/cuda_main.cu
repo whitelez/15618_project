@@ -9,6 +9,7 @@
 #include <cuda_runtime.h>
 #include <driver_functions.h>
 #include <math.h>
+#include "CycleTimer.h"
 
 using namespace std;
 
@@ -70,6 +71,23 @@ __device__ double ABS(double value){
     }
 }
 
+__device__ int
+Binary_search(double* line, double value)
+{
+  int lower = ATT_START_IDX;
+  int upper = LINE_SIZE;
+  while(lower < upper)
+  {
+    int mid = lower + (upper-lower)/2;
+    if (line[mid] == value) return mid;
+    if (line[mid] > value) upper = mid;
+    else {
+      lower = mid + 1;
+    }
+  }
+  return -1;
+}
+
 
 //I changed the name!!!!!!!!!!!!!
 __global__ void
@@ -99,19 +117,22 @@ Split_kernel(int N, double* input, double attribute, int* left, int* right, int*
     // compute overall index from position of thread in current block,
     // and given the block we are in
     int index = blockIdx.x * blockDim.x + threadIdx.x;
-    int found = 0;
+    // int found = 0;
     if (index < N){
         if(index_array[index] == 1){
             double* input_line = &(input[index*30]);
-            for(int i = 5; i < LINE_SIZE; i++){
-                if(input_line[i] == attribute){
-                    right[index] = 1;
-                    found = 1;
-                    break;
-                }
-            }
-            if(found == 0){
+            // for(int i = 5; i < LINE_SIZE; i++){
+            //     if(input_line[i] == attribute){
+            //         right[index] = 1;
+            //         found = 1;
+            //         break;
+            //     }
+            // }
+            int res_idx = Binary_search(input_line, attribute);
+            if(res_idx < 0){
                 left[index] = 1;
+            }else{
+                right[index] = 1;
             }
         }
     }
@@ -285,17 +306,18 @@ __global__ void
 Pre_best_attr(int N, double* input, int* pos_count, int* pos_succ_count,
               int* neg_succ_count, int* index_array, double attr) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
-    int found = 0;
+    // int found = 0;
     if (index < N) {
         if (index_array[index] == 1) {
             double* input_line = &input[index*LINE_SIZE];
-            for(int i = ATT_START_IDX; i < LINE_SIZE; i++){
-                if(input_line[i] == attr){
-                    found = 1;
-                    break;
-                }
-            }
-            if(found == 0){
+            // for(int i = ATT_START_IDX; i < LINE_SIZE; i++){
+            //     if(input_line[i] == attr){
+            //         found = 1;
+            //         break;
+            //     }
+            // }
+            int res_idx = Binary_search(input_line, attr);
+            if(res_idx < 0){
                 if (input_line[RESULT_IDX] > 0) {
                     neg_succ_count[index] = 1;
                 }
@@ -551,7 +573,7 @@ Node* BuildTree_Naive(double* samples, int sample_size, set<double>& attributes,
     cudaThreadSynchronize();
 
     MCV_reduce(pos_count, neg_count, gamma_top, gamma_bottom, rounded_length);
-    cudaThreadSynchronize();
+
     // host calculate the count and popular result
     int pos_count_sum = 0;
     int neg_count_sum = 0;
@@ -617,34 +639,34 @@ Node* BuildTree_Naive(double* samples, int sample_size, set<double>& attributes,
     cudaThreadSynchronize();
 
 
-/////////////////////////////////
-    cout<<"Best Attr " << split_attr << endl;
-    int* left_array_2;
-    int* right_array_2;
-    cudaMalloc((void **)&left_array_2, sizeof(int) * rounded_length);
-    cudaMalloc((void **)&right_array_2, sizeof(int) * rounded_length);
-    cudaMemset(left_array_2, 0x00, sizeof(int)*rounded_length);
-    cudaMemset(right_array_2, 0x00, sizeof(int)*rounded_length);
-    cudaMemcpy(left_array_2, left_array, sizeof(int)*sample_size, cudaMemcpyDeviceToDevice);
-    cudaMemcpy(right_array_2, right_array, sizeof(int)*sample_size, cudaMemcpyDeviceToDevice);
-
-    int left_array_2_last = 0;
-    int right_array_2_last = 0;
-    cudaMemcpy(&left_array_2_last, &left_array_2[rounded_length-1], sizeof(int),cudaMemcpyDeviceToHost);
-    cudaMemcpy(&right_array_2_last, &right_array_2[rounded_length-1], sizeof(int),cudaMemcpyDeviceToHost);
-
-    Exclusive_scan(rounded_length, left_array_2);
-    Exclusive_scan(rounded_length, right_array_2);
-
-    int left_array_2_result = 0;
-    int right_array_2_result = 0;
-    cudaMemcpy(&left_array_2_result, &left_array_2[rounded_length-1], sizeof(int),cudaMemcpyDeviceToHost);
-    cudaMemcpy(&right_array_2_result, &right_array_2[rounded_length-1], sizeof(int),cudaMemcpyDeviceToHost);
-    left_array_2_result += left_array_2_last;
-    right_array_2_result += right_array_2_last;
-
-    cout <<" left size " << left_array_2_result<< " right size " << right_array_2_result <<endl;
-///////////////////////////
+// /////////////////////////////////
+//     cout<<"Best Attr " << split_attr << endl;
+//     int* left_array_2;
+//     int* right_array_2;
+//     cudaMalloc((void **)&left_array_2, sizeof(int) * rounded_length);
+//     cudaMalloc((void **)&right_array_2, sizeof(int) * rounded_length);
+//     cudaMemset(left_array_2, 0x00, sizeof(int)*rounded_length);
+//     cudaMemset(right_array_2, 0x00, sizeof(int)*rounded_length);
+//     cudaMemcpy(left_array_2, left_array, sizeof(int)*sample_size, cudaMemcpyDeviceToDevice);
+//     cudaMemcpy(right_array_2, right_array, sizeof(int)*sample_size, cudaMemcpyDeviceToDevice);
+//
+//     int left_array_2_last = 0;
+//     int right_array_2_last = 0;
+//     cudaMemcpy(&left_array_2_last, &left_array_2[rounded_length-1], sizeof(int),cudaMemcpyDeviceToHost);
+//     cudaMemcpy(&right_array_2_last, &right_array_2[rounded_length-1], sizeof(int),cudaMemcpyDeviceToHost);
+//
+//     Exclusive_scan(rounded_length, left_array_2);
+//     Exclusive_scan(rounded_length, right_array_2);
+//
+//     int left_array_2_result = 0;
+//     int right_array_2_result = 0;
+//     cudaMemcpy(&left_array_2_result, &left_array_2[rounded_length-1], sizeof(int),cudaMemcpyDeviceToHost);
+//     cudaMemcpy(&right_array_2_result, &right_array_2[rounded_length-1], sizeof(int),cudaMemcpyDeviceToHost);
+//     left_array_2_result += left_array_2_last;
+//     right_array_2_result += right_array_2_last;
+//
+//     cout <<" left size " << left_array_2_result<< " right size " << right_array_2_result <<endl;
+// ///////////////////////////
 
 
     ret_node->left = BuildTree_Naive(samples, sample_size, attributes, height+1, left_array,
@@ -660,22 +682,22 @@ Node* BuildTree_Naive(double* samples, int sample_size, set<double>& attributes,
 }
 
 
-vector<Node*> BuildTree_multiple(double* samples2, int size, set<double>& attributes, int* index_array2) {
+vector<Node*> BuildTree_multiple(double* samples, int size, set<double>& attributes, int* index_array) {
     // cout<<"BM IN" <<endl;
     // initial model
     vector<Node*> result;
     const int threadsPerBlock = 512;
     const int blocks = size/threadsPerBlock + 1;
 
-    double* samples;
-    cudaMalloc((void **)&samples, sizeof(double) * size * 30);
-    cudaMemset(samples, 0x00, sizeof(double) * size * 30);
-    cudaMemcpy(samples, samples2, sizeof(double) * size * 30, cudaMemcpyHostToDevice);
-
-    int* index_array;
-    cudaMalloc((void **)&index_array, sizeof(int) * size);
-    cudaMemset(index_array, 0x00, sizeof(int) * size);
-    cudaMemcpy(index_array, index_array2, sizeof(int) * size, cudaMemcpyHostToDevice);
+    // double* samples;
+    // cudaMalloc((void **)&samples, sizeof(double) * size * 30);
+    // // cudaMemset(samples, 0x00, sizeof(double) * size * 30);
+    // cudaMemcpy(samples, samples2, sizeof(double) * size * 30, cudaMemcpyHostToDevice);
+    //
+    // int* index_array;
+    // cudaMalloc((void **)&index_array, sizeof(int) * size);
+    // // cudaMemset(index_array, 0x00, sizeof(int) * size);
+    // cudaMemcpy(index_array, index_array2, sizeof(int) * size, cudaMemcpyHostToDevice);
 
     int rounded_length = nextPow2(size);
     int* pos_count;
@@ -785,8 +807,8 @@ vector<Node*> BuildTree_multiple(double* samples2, int size, set<double>& attrib
 
     // cout<<"BM out" <<endl;
 
-    cudaFree(samples);
-    cudaFree(index_array);
+    // cudaFree(samples);
+    // cudaFree(index_array);
     cudaFree(pos_count);
     cudaFree(neg_count);
     cudaFree(gamma_top);
@@ -987,6 +1009,7 @@ int main(int argc, char** argv){
     set<double> attributes;
 
     int id = 0;
+    double Prag_startTime = CycleTimer::currentSeconds();
 
     for (string line; getline(input, line); )
     {
@@ -1060,9 +1083,22 @@ int main(int argc, char** argv){
     }
     // cout <<endl;
 
+    double* samples2;
+    cudaMalloc((void **)&samples2, sizeof(double) * sample_length * 30);
+    // cudaMemset(samples, 0x00, sizeof(double) * size * 30);
+    cudaMemcpy(samples2, sample_array, sizeof(double) * sample_length * 30, cudaMemcpyHostToDevice);
 
-    vector<Node*> forest = BuildTree_multiple(sample_array, sample_length, attributes, index_array);
+    int* index_array2;
+    cudaMalloc((void **)&index_array2, sizeof(int) * sample_length);
+    // cudaMemset(index_array, 0x00, sizeof(int) * size);
+    cudaMemcpy(index_array2, index_array, sizeof(int) * sample_length, cudaMemcpyHostToDevice);
 
+    double Build_startTime = CycleTimer::currentSeconds();
+    vector<Node*> forest = BuildTree_multiple(samples2, sample_length, attributes, index_array2);
+    double Build_endTime = CycleTimer::currentSeconds();
+
+    cudaFree(samples2);
+    cudaFree(index_array2);
 
     for (string line; getline(predict, line); )
     {
@@ -1133,8 +1169,9 @@ int main(int argc, char** argv){
     }
 
 
-
+    double Pred_startTime = CycleTimer::currentSeconds();
     double* predict_ret = Predict_multiple(sample_array_2, sample_length_2, forest, index_array_2);
+    double Pred_endTime = CycleTimer::currentSeconds();
 
 
     int total = 0;
@@ -1151,7 +1188,18 @@ int main(int argc, char** argv){
     }
     float rate = (float)match / (float)total;
 
-    cout<< " total " << total << " match " << match << " rate " << rate << endl;
+    double Prag_endTime = CycleTimer::currentSeconds();
+
+    cout<< "--------------------------------------------------------------"<<endl;
+    cout<< "Traning Sample Size " << samples.size() <<endl;
+    cout<< "Testing Sample Size " << samples_2.size() <<endl;
+    cout<< "     Predict Match " << match << endl;
+    cout<< "     Predict Rate " << rate << endl;
+    cout<< "Total Time " <<Prag_endTime - Prag_startTime <<endl;
+    cout<< "     Model Building Time " << Build_endTime - Build_startTime <<endl;
+    cout<< "     Model Predict Time " << Pred_endTime - Pred_startTime <<endl;
+    cout<< "--------------------------------------------------------------"<<endl;
+
 
     free(sample_array);
     free(sample_array_2);
