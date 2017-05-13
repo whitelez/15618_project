@@ -10,19 +10,19 @@ Usage:
     
     muti [input] [output] [multiple times]
 
-will provides a helper tool to extend files with multiple same contents
+provides a helper tool to extend files with multiple same contents
 
     g++ gradient_boosting.cpp -o seq_GB
     
     seq_GB [training file] [testing file] [max height of decision tree] [max iteration of gradient boosting]
 
-Will provides sequential version of gradient boosting executable
+provides sequential version of gradient boosting executable
 
     nvcc cuda_main.cu -o cuda_GB
     
     cuda_GB [training file] [testing file] [max height of decision tree] [max iteration of gradient boosting]
 
-will provide a cuda parallel version for gradient boosting executable
+provide a cuda parallel version for gradient boosting executable
 
 
 Data: 
