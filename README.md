@@ -6,7 +6,7 @@ Code: In Demo folder, Gradient_boosting.cpp contains our sequential implementati
 
 Usage: 
 
-*g++ doublingData.cpp
+* g++ doublingData.cpp
 
 will provides a 
 
