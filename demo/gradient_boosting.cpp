@@ -8,6 +8,7 @@
 #include <vector>
 #include <stdlib.h>
 #include <math.h>
+#include "CycleTimer.h"
 // #include <utility>
 
 using namespace std;
@@ -461,6 +462,7 @@ int main(int argc, char** argv){
 
     vector<map<string, double>* > samples;
     set<string> attributes;
+    double Prag_startTime = CycleTimer::currentSeconds();
 
     for (string line; getline(input, line); )
     {
@@ -501,12 +503,14 @@ int main(int argc, char** argv){
     input.close();
 
 
-    string parse = Best_attribute(samples, attributes);
+    // string parse = Best_attribute(samples, attributes);
     // cout<<parse<<endl;
 
     // call BuildTree_Naive()
 
+    double Build_startTime = CycleTimer::currentSeconds();
     vector<Node*> forest = buildTree_multiple(samples, attributes);
+    double Build_endTime = CycleTimer::currentSeconds();
 
     // cout<< "finish forest" << endl;
 
@@ -557,8 +561,9 @@ int main(int argc, char** argv){
     predict.close();
 
     // cout<< "started predict multiple" << endl;
-
+    double Pred_startTime = CycleTimer::currentSeconds();
     int ret = Predict_multiple(pred_samples, forest);
+    double Pred_endTime = CycleTimer::currentSeconds();
 
     int total = 0;
     int match = 0;
@@ -582,7 +587,19 @@ int main(int argc, char** argv){
 
     }
     float rate = (float)match / (float)total;
-    cout<< " total " << total << " match " << match << " rate " << rate << endl;
+
+    double Prag_endTime = CycleTimer::currentSeconds();
+
+    cout<< "--------------------------------------------------------------"<<endl;
+    cout<< "Traning Sample Size " << samples.size() <<endl;
+    cout<< "Testing Sample Size " << pred_samples.size() <<endl;
+    cout<< "     Predict Match " << match << endl;
+    cout<< "     Predict Rate " << rate << endl;
+    cout<< "Total Time " <<Prag_endTime - Prag_startTime <<endl;
+    cout<< "     Model Building Time " << Build_endTime - Build_startTime <<endl;
+    cout<< "     Model Predict Time " << Pred_endTime - Pred_startTime <<endl;
+    cout<< "--------------------------------------------------------------"<<endl;
+
 
     freeSamples(samples);
     freeSamples(pred_samples);

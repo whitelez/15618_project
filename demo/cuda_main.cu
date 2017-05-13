@@ -1009,7 +1009,6 @@ int main(int argc, char** argv){
     set<double> attributes;
 
     int id = 0;
-    double Prag_startTime = CycleTimer::currentSeconds();
 
     for (string line; getline(input, line); )
     {
@@ -1083,6 +1082,9 @@ int main(int argc, char** argv){
     }
     // cout <<endl;
 
+
+    double Prag_startTime = CycleTimer::currentSeconds();
+
     double* samples2;
     cudaMalloc((void **)&samples2, sizeof(double) * sample_length * 30);
     // cudaMemset(samples, 0x00, sizeof(double) * size * 30);
@@ -1092,6 +1094,8 @@ int main(int argc, char** argv){
     cudaMalloc((void **)&index_array2, sizeof(int) * sample_length);
     // cudaMemset(index_array, 0x00, sizeof(int) * size);
     cudaMemcpy(index_array2, index_array, sizeof(int) * sample_length, cudaMemcpyHostToDevice);
+
+    double Prag_endTime = CycleTimer::currentSeconds();
 
     double Build_startTime = CycleTimer::currentSeconds();
     vector<Node*> forest = BuildTree_multiple(samples2, sample_length, attributes, index_array2);
@@ -1188,14 +1192,13 @@ int main(int argc, char** argv){
     }
     float rate = (float)match / (float)total;
 
-    double Prag_endTime = CycleTimer::currentSeconds();
-
     cout<< "--------------------------------------------------------------"<<endl;
     cout<< "Traning Sample Size " << samples.size() <<endl;
     cout<< "Testing Sample Size " << samples_2.size() <<endl;
     cout<< "     Predict Match " << match << endl;
     cout<< "     Predict Rate " << rate << endl;
-    cout<< "Total Time " <<Prag_endTime - Prag_startTime <<endl;
+    cout<< "Total Time " << Prag_endTime - Prag_startTime + Build_endTime - Build_startTime + Pred_endTime - Pred_startTime <<endl;
+    cout<< "     Data Copy Time " << Prag_endTime - Prag_startTime <<endl;
     cout<< "     Model Building Time " << Build_endTime - Build_startTime <<endl;
     cout<< "     Model Predict Time " << Pred_endTime - Pred_startTime <<endl;
     cout<< "--------------------------------------------------------------"<<endl;
