@@ -10,11 +10,12 @@ using namespace std;
 
 //@TODO parse max_iters
 int main(int argc, char** argv){
-    if(argc < 3){
-        fprintf(stdout, "Usage: [training_file] [testing_file]\n");
+    if(argc < 4){
+        fprintf(stdout, "Usage: [input_file] [output_file] [multiplication_times]\n");
         return -1;
     }
 
+    int times = atoi(argv[3]);
     // fprintf(stdout, "argc %d\n", argc);
     // return 0;
     //parse file
@@ -29,7 +30,7 @@ int main(int argc, char** argv){
         data.push_back(line);
     }
 
-    for(int i = 0; i < 75; i++){
+    for(int i = 0; i < times; i++){
         for(int j = 0; j < data.size(); j++){
             output<<data[j] << endl;
         }
