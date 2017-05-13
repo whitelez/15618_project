@@ -1,4 +1,4 @@
-# 15618_project
+# 15618 final project
 
 This is the code base of the 15418/15618 final project : CuGB Cuda based Gradient Boosting Decision Tree
 
