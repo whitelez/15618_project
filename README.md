@@ -2,7 +2,7 @@
 
 This is the code base of the 15418/15618 final project : CuGB Cuda based Gradient Boosting Decision Tree
 
-Code: In Demo folder, Gradient_boosting.cpp contains our sequential implementation of gradient boosting tree. cuda_main.cu contains our cuda parallel implementation of gradient boosting tree. 
+Code: In Demo folder, Gradient_boosting.cpp contains our sequential implementation of gradient boosting tree. cuda_main.cu contains our cuda parallel implementation of gradient boosting tree. doublingData.cpp is for creating a helper tool for expanding dataset to meet performance testing requirement
 
 Usage: 
 
